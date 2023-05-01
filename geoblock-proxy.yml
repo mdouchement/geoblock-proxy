@@ -1,0 +1,27 @@
+logger: debug
+# Enable metrics by providing the listen interface
+metrics: "127.0.0.1:9095"
+#
+#
+# protocol: udp or tcp
+protocol: tcp
+# Frontend is the proxy listening interface
+frontend: localhost:7777
+# backend is the upstream service protected by the proxy
+backend: localhost:7778
+# databases is the liste ip2location databases.
+databases:
+- IP2LOCATION-LITE-DB1.BIN
+#
+# Rules' configuration
+#
+# default_action is the default action to perform when a new incoming connection is openned (`block' or `allow')
+default_action: block
+allowlist:
+- type: country
+  value: FR
+- type: cidr
+  value: 127.0.0.0/8 # IPv4 loopback
+# blocklist:
+# - type: cidr
+#   value: 127.0.0.0/8 # IPv4 loopback
