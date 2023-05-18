@@ -17,22 +17,23 @@ import (
 type TCPProxy struct {
 	ctx        context.Context
 	listener   *net.TCPListener
-	frontend   *net.TCPAddr
-	backend    *net.TCPAddr
+	addresser  Addresser
 	acceptable AcceptableConnection
 }
 
 // NewTCPProxy creates a new TCPProxy.
-func NewTCPProxy(ctx context.Context, frontend, backend *net.TCPAddr, h AcceptableConnection) (*TCPProxy, error) {
+func NewTCPProxy(ctx context.Context, addresser Addresser, h AcceptableConnection) (*TCPProxy, error) {
 	log := logger.LogWith(ctx)
 
 	// detect version of hostIP to bind only to correct version
+	frontend := addresser.Frontend().(*net.TCPAddr)
 	fipv := ipv4
 	if frontend.IP.To4() == nil {
 		fipv = ipv6
 	}
 	scheme := "tcp" + string(fipv)
 
+	backend := addresser.Backend().(*net.TCPAddr)
 	bipv := ipv4
 	if backend.IP.To4() == nil {
 		bipv = ipv6
@@ -49,20 +50,19 @@ func NewTCPProxy(ctx context.Context, frontend, backend *net.TCPAddr, h Acceptab
 	return &TCPProxy{
 		ctx:        ctx,
 		listener:   listener,
-		frontend:   listener.Addr().(*net.TCPAddr),
-		backend:    backend,
+		addresser:  addresser,
 		acceptable: h,
 	}, nil
 }
 
 // FrontendAddr returns the TCP address on which the proxy is listening.
 func (p *TCPProxy) FrontendAddr() net.Addr {
-	return p.frontend
+	return p.addresser.Frontend()
 }
 
 // BackendAddr returns the proxied TCP address.
 func (p *TCPProxy) BackendAddr() net.Addr {
-	return p.backend
+	return p.addresser.Backend()
 }
 
 // Run starts forwarding the traffic using TCP.
@@ -83,7 +83,10 @@ func (p *TCPProxy) Run() {
 		}
 
 		go func(local net.Conn) {
-			remote, err := net.DialTCP("tcp", nil, p.backend)
+			backend := p.addresser.Backend().(*net.TCPAddr)
+			log.Infof("Forwarding %s://%s to %s://%s", p.FrontendAddr().Network(), p.FrontendAddr().String(), backend.Network(), backend.String())
+
+			remote, err := net.DialTCP("tcp", nil, backend)
 			if err != nil {
 				log.Errorf("Could not connect to backend: %s", err)
 				return

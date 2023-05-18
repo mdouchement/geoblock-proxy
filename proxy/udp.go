@@ -27,24 +27,25 @@ const (
 type UDPProxy struct {
 	ctx        context.Context
 	listener   *net.UDPConn
-	frontend   *net.UDPAddr
-	backend    *net.UDPAddr
+	addresser  Addresser
 	tracking   connTrackMap
 	mutex      sync.Mutex
 	acceptable AcceptableConnection
 }
 
 // NewUDPProxy creates a new UDPProxy.
-func NewUDPProxy(ctx context.Context, frontend, backend *net.UDPAddr, h AcceptableConnection) (*UDPProxy, error) {
+func NewUDPProxy(ctx context.Context, addresser Addresser, h AcceptableConnection) (*UDPProxy, error) {
 	log := logger.LogWith(ctx)
 
 	// detect version of hostIP to bind only to correct version
+	frontend := addresser.Frontend().(*net.UDPAddr)
 	fipv := ipv4
 	if frontend.IP.To4() == nil {
 		fipv = ipv6
 	}
 	scheme := "udp" + string(fipv)
 
+	backend := addresser.Backend().(*net.UDPAddr)
 	bipv := ipv4
 	if backend.IP.To4() == nil {
 		bipv = ipv6
@@ -59,8 +60,7 @@ func NewUDPProxy(ctx context.Context, frontend, backend *net.UDPAddr, h Acceptab
 	return &UDPProxy{
 		ctx:        logger.WithLogger(ctx, log.WithPrefixf("[%s://%s]", scheme, frontend)),
 		listener:   listener,
-		frontend:   listener.LocalAddr().(*net.UDPAddr),
-		backend:    backend,
+		addresser:  addresser,
 		tracking:   make(connTrackMap),
 		acceptable: h,
 	}, nil
@@ -68,12 +68,12 @@ func NewUDPProxy(ctx context.Context, frontend, backend *net.UDPAddr, h Acceptab
 
 // FrontendAddr returns the UDP address on which the proxy is listening.
 func (p *UDPProxy) FrontendAddr() net.Addr {
-	return p.frontend
+	return p.addresser.Frontend()
 }
 
 // BackendAddr returns the proxied UDP address.
 func (p *UDPProxy) BackendAddr() net.Addr {
-	return p.backend
+	return p.addresser.Backend()
 }
 
 // Run starts forwarding the traffic using UDP.
@@ -88,7 +88,7 @@ func (p *UDPProxy) Run() {
 			// ECONNREFUSED like Read do (see comment in
 			// UDPProxy.replyLoop)
 			if !isClosedError(err) {
-				log.Warnf("Stopping proxy on udp/%v for udp/%v (%s)", p.frontend, p.backend, err)
+				log.Warnf("Stopping proxy on udp/%v (%s)", p.addresser.Frontend(), err)
 				break
 			}
 
@@ -111,9 +111,12 @@ func (p *UDPProxy) Run() {
 			var hit bool
 			proxyConn, hit = p.tracking[fromKey]
 			if !hit {
-				proxyConn, err = net.DialUDP("udp", nil, p.backend)
+				backend := p.addresser.Backend().(*net.UDPAddr)
+				log.Infof("Forwarding %s://%s to %s://%s", p.FrontendAddr().Network(), p.FrontendAddr().String(), backend.Network(), backend.String())
+
+				proxyConn, err = net.DialUDP("udp", nil, backend)
 				if err != nil {
-					log.Warnf("Can't proxy a datagram to udp/%s: %s\n", p.backend, err)
+					log.Warnf("Can't proxy a datagram to udp/%s: %s\n", backend, err)
 					return true
 				}
 
@@ -132,7 +135,7 @@ func (p *UDPProxy) Run() {
 		for i := 0; i != read; {
 			written, err := proxyConn.Write(buf[i:read])
 			if err != nil {
-				log.Warnf("Can't proxy a datagram to udp/%s: %s\n", p.backend, err)
+				log.Warnf("Can't proxy a datagram to udp/%s: %s\n", proxyConn.RemoteAddr().String(), err)
 				break
 			}
 

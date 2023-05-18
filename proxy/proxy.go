@@ -17,6 +17,14 @@ const (
 	ipv6 ipVersion = "6"
 )
 
+// An Addresser provides network addresses for the proxy.
+type Addresser interface {
+	// Frontend returns the listening address of the proxy.
+	Frontend() net.Addr
+	// Backend returns the upstream connection protected by the proxy
+	Backend() net.Addr
+}
+
 // AcceptableConnection is called when a proxy got a new connection.
 // When the handler returns false, the connection is closed.
 type AcceptableConnection func(ctx context.Context, ip net.IP) bool
@@ -39,12 +47,12 @@ type Proxy interface {
 }
 
 // NewProxy creates a Proxy according to the specified frontend and backend.
-func NewProxy(ctx context.Context, frontend, backend net.Addr, h AcceptableConnection) (Proxy, error) {
-	switch frontend.(type) {
+func NewProxy(ctx context.Context, addresser Addresser, h AcceptableConnection) (Proxy, error) {
+	switch addresser.Frontend().(type) {
 	case *net.UDPAddr:
-		return NewUDPProxy(ctx, frontend.(*net.UDPAddr), backend.(*net.UDPAddr), h)
+		return NewUDPProxy(ctx, addresser, h)
 	case *net.TCPAddr:
-		return NewTCPProxy(ctx, frontend.(*net.TCPAddr), backend.(*net.TCPAddr), h)
+		return NewTCPProxy(ctx, addresser, h)
 	// case *sctp.SCTPAddr:
 	// 	return NewSCTPProxy(frontend.(*sctp.SCTPAddr), backend.(*sctp.SCTPAddr), h)
 	default:

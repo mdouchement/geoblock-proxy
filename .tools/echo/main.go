@@ -4,26 +4,36 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"sync/atomic"
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "tcp" {
-		tcp()
+	if len(os.Args) < 2 {
+		panic("missing url")
 	}
 
-	udp()
+	u, err := url.Parse(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+
+	if u.Scheme == "tcp" {
+		tcp(u)
+	}
+
+	udp(u)
 }
 
-func udp() {
-	addr, err := net.ResolveUDPAddr("udp", "localhost:7778")
+func udp(url *url.URL) {
+	addr, err := net.ResolveUDPAddr(url.Scheme, url.Host)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Printf("Listen on udp://%s\n", addr)
-	c, err := net.ListenUDP("udp", addr)
+	c, err := net.ListenUDP(url.Scheme, addr)
 	if err != nil {
 		panic(err)
 	}
@@ -49,14 +59,14 @@ func udp() {
 	}
 }
 
-func tcp() {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:7778")
+func tcp(url *url.URL) {
+	addr, err := net.ResolveTCPAddr(url.Scheme, url.Host)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Printf("Listen on tcp://%s\n", addr)
-	l, err := net.ListenTCP("tcp", addr)
+	l, err := net.ListenTCP(url.Scheme, addr)
 	if err != nil {
 		panic(err)
 	}

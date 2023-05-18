@@ -8,7 +8,9 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
+	"github.com/mdouchement/geoblock-proxy/loadbalancer"
 	"github.com/mdouchement/geoblock-proxy/proxy"
 	"github.com/mdouchement/geoblock/lookup"
 	"github.com/mdouchement/logger"
@@ -25,7 +27,7 @@ type controller struct {
 	config    Configuration
 	ctx       context.Context
 	evaluator *Evaluator
-	proxy     proxy.Proxy
+	proxies   []proxy.Proxy
 
 	allowed  *prometheus.CounterVec
 	rejected *prometheus.CounterVec
@@ -121,8 +123,20 @@ func main() {
 			}
 
 			defer c.close()
-			c.proxy.Run()
 
+			var wg sync.WaitGroup
+			for _, p := range c.proxies {
+				wg.Add(1)
+
+				go func(p proxy.Proxy) {
+					defer wg.Done()
+					defer p.Close()
+
+					p.Run()
+				}(p)
+			}
+
+			wg.Wait()
 			return nil
 		},
 	}
@@ -146,60 +160,48 @@ func (c *controller) setup() error {
 
 	//
 
-	var err error
-	var backend, frontend net.Addr
-
-	switch c.config.Protocol {
-	case ProtocolUDP:
-		backend, err = net.ResolveUDPAddr("udp", c.config.Backend)
+	c.proxies = make([]proxy.Proxy, len(c.config.Endpoints))
+	for i, endpoint := range c.config.Endpoints {
+		lb, err := loadbalancer.NewRoundRobin(endpoint)
 		if err != nil {
-			return errors.Wrapf(err, "could not resolve UDP backend: %s", c.config.Backend)
+			return errors.Wrap(err, "loadbalancer")
 		}
 
-		frontend, err = net.ResolveUDPAddr("udp", c.config.Frontend)
-		if err != nil {
-			return errors.Wrapf(err, "could not resolve UDP frontend: %s", c.config.Frontend)
-		}
-	case ProtocolTCP:
-		backend, err = net.ResolveTCPAddr("tcp", c.config.Backend)
-		if err != nil {
-			return errors.Wrapf(err, "could not resolve TCP backend: %s", c.config.Backend)
-		}
+		c.proxies[i], err = proxy.NewProxy(c.ctx, lb, func(ctx context.Context, ip net.IP) bool {
+			if ip == nil {
+				return false
+			}
 
-		frontend, err = net.ResolveTCPAddr("tcp", c.config.Frontend)
+			log := logger.LogWith(ctx)
+
+			allowed, country, err := c.evaluator.Evaluate(ip.String())
+			if err != nil {
+				log.Infof("%s - %v", ip, err)
+				return false
+			}
+
+			if !allowed {
+				log.Infof("%s from %s is blocked", ip, strings.ToUpper(country))
+				c.rejected.WithLabelValues(country).Inc()
+				return false
+			}
+
+			c.allowed.WithLabelValues(country).Inc()
+			return true
+		})
+
 		if err != nil {
-			return errors.Wrapf(err, "could not resolve TCP frontend: %s", c.config.Frontend)
+			return errors.Wrap(err, "could not create proxy")
 		}
 	}
 
-	c.proxy, err = proxy.NewProxy(c.ctx, frontend, backend, func(ctx context.Context, ip net.IP) bool {
-		if ip == nil {
-			return false
-		}
-
-		log := logger.LogWith(ctx)
-
-		allowed, country, err := c.evaluator.Evaluate(ip.String())
-		if err != nil {
-			log.Infof("%s - %v", ip, err)
-			return false
-		}
-
-		if !allowed {
-			log.Infof("%s from %s is blocked", ip, strings.ToUpper(country))
-			c.rejected.WithLabelValues(country).Inc()
-			return false
-		}
-
-		c.allowed.WithLabelValues(country).Inc()
-		return true
-	})
-
-	return errors.Wrap(err, "could not create proxy")
+	return nil
 }
 
 func (c *controller) close() {
-	if c.proxy != nil {
-		c.proxy.Close()
+	for _, proxy := range c.proxies {
+		if proxy != nil {
+			proxy.Close()
+		}
 	}
 }
