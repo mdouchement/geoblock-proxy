@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -12,24 +13,33 @@ func main() {
 	time.Sleep(time.Nanosecond)
 	id := strconv.FormatInt(time.Now().UnixNano(), 36)
 
+	if len(os.Args) < 2 {
+		panic("missing url")
+	}
+
+	u, err := url.Parse(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+
 	var c net.Conn
-	if len(os.Args) == 2 && os.Args[1] == "tcp" {
-		addr, err := net.ResolveTCPAddr("tcp", "localhost:7777")
+	if u.Scheme == "tcp" {
+		addr, err := net.ResolveTCPAddr(u.Scheme, u.Host)
 		if err != nil {
 			panic(err)
 		}
 
-		c, err = net.DialTCP("tcp", nil, addr)
+		c, err = net.DialTCP(u.Scheme, nil, addr)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		addr, err := net.ResolveUDPAddr("udp", "localhost:7777")
+		addr, err := net.ResolveUDPAddr(u.Scheme, u.Host)
 		if err != nil {
 			panic(err)
 		}
 
-		c, err = net.DialUDP("udp", nil, addr)
+		c, err = net.DialUDP(u.Scheme, nil, addr)
 		if err != nil {
 			panic(err)
 		}
@@ -39,7 +49,7 @@ func main() {
 	//
 	//
 
-	_, err := c.Write([]byte("Coucou " + id))
+	_, err = c.Write([]byte("Coucou " + id))
 	if err != nil {
 		panic(err)
 	}

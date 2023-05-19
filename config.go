@@ -1,6 +1,6 @@
 package main
 
-// Copied from https://github.com/mdouchement/geoblock
+// Based on https://github.com/mdouchement/geoblock
 
 // Rule data types.
 const (
@@ -14,18 +14,10 @@ const (
 	DefaultActionBlock = "block"
 )
 
-// Supported protocols.
-const (
-	ProtocolTCP = "tcp"
-	ProtocolUDP = "udp"
-)
-
 type (
 	// A Configuration defines the proxy configuration.
 	Configuration struct {
-		Protocol      string   `yaml:"protocol"`
-		Frontend      string   `yaml:"frontend"`
-		Backend       string   `yaml:"backend"`
+		Endpoints     []string `yaml:"endpoints"`
 		Metrics       string   `yaml:"metrics"`
 		Logger        string   `yaml:"logger"`
 		Databases     []string `yaml:"databases"`      // Path to ip2location database files.

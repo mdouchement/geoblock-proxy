@@ -5,6 +5,7 @@ It works at `TCP` or `UDP` level.
 
 This project relies IP2Location LITE data available from [`lite.ip2location.com`](https://lite.ip2location.com/database/ip-country) database
 - Databases: [https://download.ip2location.com/lite](https://download.ip2location.com/lite/)
+- `go run .tools/ip2location-download/main.go https://download.ip2location.com/lite/IP2LOCATION-LITE-DB1.BIN.ZIP IP2LOCATION-LITE-DB1.BIN`
 
 
 ## License

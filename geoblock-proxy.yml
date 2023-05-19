@@ -3,12 +3,14 @@ logger: debug
 metrics: "127.0.0.1:9095"
 #
 #
-# protocol: udp or tcp
-protocol: tcp
-# Frontend is the proxy listening interface
-frontend: localhost:7777
-# backend is the upstream service protected by the proxy
-backend: localhost:7778
+# endpoints is the list of supported frontends & backends
+# =>  protocol://frontend:5000?backend=backend-1:5000&backend=backend-2:5000
+#   Protocol can be `udp' or `tcp'
+#   Frontend is the proxy listening interface
+#   Backend is the upstream service protected by the proxy
+endpoints:
+- tcp://localhost:7777?backend=localhost:7778&backend=localhost:7779
+- udp://localhost:7777?backend=localhost:7778&backend=localhost:7779
 # databases is the liste ip2location databases.
 databases:
 - IP2LOCATION-LITE-DB1.BIN
