@@ -2,10 +2,8 @@
 FROM golang:alpine as build-env
 MAINTAINER maintainer="mdouchement"
 
-RUN apk upgrade && apk add curl git ca-certificates
+RUN apk upgrade && apk add curl git ca-certificates go-task
 RUN update-ca-certificates
-
-RUN curl -sL https://taskfile.dev/install.sh | sh
 
 ENV CGO_ENABLED 0
 ENV GO111MODULE on
@@ -14,7 +12,7 @@ WORKDIR /geoblock-proxy
 COPY . .
 
 RUN go mod download
-RUN task build-server
+RUN go-task build-server
 
 # final stage
 FROM scratch
